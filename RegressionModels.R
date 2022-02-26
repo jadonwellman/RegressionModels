@@ -362,43 +362,156 @@ anova(mdlA,mdlB,mdlC)
 
 # Quiz
 
-# 1
+# 1: 0.969
 
 library(MASS)
 library(dplyr)
+library(ggplot2)
 data("shuttle")
 head(shuttle)
 str(shuttle)
 summary(shuttle)
 plot(shuttle$wind,shuttle$use)
 
-# Odds = 0.78 + 0.97*(wind=tail)
-# Head: 0.78
-# Tail: 1.75
-mdl <- glm(use~wind,binomial,shuttle)
-coef <- summary(mdl)$coef
-exp(coef[,1])
+# make sure auto gets the higher factor, to indicate success in the logistic
+# regression
+shuttle$use <- relevel(shuttle$use,'noauto')
 
-# Odds = 0.75 + 1.03*(wind=head)
-# Head: 1.79
-# Tail: 0.75
-shuttle$wind <- relevel(shuttle$wind,'tail')
-mdl <- glm(use~wind,binomial,shuttle)
-coef <- summary(mdl)$coef
-exp(coef[,1])
-
-# log(odds) = B0 + B1*wind = log(p/(1-p))
-# exp(B1) = odds = p/(1-p)
+# log(odds) = 0.25 + 0.032*(wind=tail)
+# exp(0.25 + 0.032*(wind=tail))=exp(0.25)*exp(0.032)^(wind=tail)=odds
+# Tail: 0.75 or 43%
+# Head: 0.78 or 44%
 mdl <- glm(use~wind,binomial,shuttle)
 coef <- summary(mdl)$coef
 coef
-# If there is a tailwind the odds of giving the autolander a green light
-# are .75 or 43%. If there is a headwind the odds are 1.79 or 64%.
-# Odds = 0.75 + 1.03*(wind=head)
-# But the p-values are weak
-e_coef <- exp(coef[,1])
-e_coef
-# Give the estimated odds ratio for autolander use comparing head winds, labeled 
-# as "head" in the variable headwind (numerator) to tail winds (denominator).
-(as.numeric(e_coef[1])+as.numeric(e_coef[2]))/as.numeric(e_coef[1])
+# Head:
+head <- exp(coef[1,1])
+head #odds
+head/(1+head) #probability
+# Tail:
+tail <- head*exp(coef[2,1])
+tail #odds
+tail/(1+tail) #probability
+head/tail
 
+# Or could have had windhead be the variable, so the numerator is already set
+shuttle$wind <- relevel(shuttle$wind,'tail')
+mdl <- glm(use~wind,binomial,shuttle)
+exp(summary(mdl)$coef)
+
+# 2: Not 1. Is 0.968
+
+# Revised, 0.968
+mdl <- glm(use~wind+magn,binomial,shuttle)
+exp(summary(mdl)$coef)
+
+# First attempt, incorrectly got 1
+
+# Now incorporate wind strength, exploring an interaction term
+data("shuttle")
+shuttle$use <- relevel(shuttle$use,'noauto')
+
+jittered <- shuttle
+jittered$wind <- jitter(as.numeric(jittered$wind),2)
+jittered$use <- jitter(as.numeric(jittered$use),2)
+g = ggplot(jittered, aes(x = wind, y = use, colour = magn))
+g = g + geom_point(size = 6, colour = "black") + geom_point(size = 4)
+g = g + xlab('Wind') + ylab('Use')
+g
+table(shuttle$wind,shuttle$use,shuttle$magn)
+
+mdl <- glm(use~wind*magn,binomial,shuttle)
+coef <- summary(mdl)$coef
+coef
+head <- exp(coef[1,1]) # head and small actually
+head
+tail <- head*exp(coef[2,1])
+tail
+head/tail
+
+# What if we missed the interaction term
+mdl <- glm(use~wind+magn,binomial,shuttle)
+coef <- summary(mdl)$coef
+coef
+head <- exp(coef[1,1]) # head and small actually
+head
+tail <- head*exp(coef[2,1])
+tail
+head/tail
+
+# 3: The coefficients reverse their signs
+
+data("shuttle")
+shuttle$use <- relevel(shuttle$use,'noauto')
+mdl <- glm(use~wind,binomial,shuttle)
+coef <- summary(mdl)$coef
+coef
+shuttle$use <- relevel(shuttle$use,'auto')
+mdl <- glm(use~wind,binomial,shuttle)
+coef <- summary(mdl)$coef
+coef
+
+# 4: 0.9457
+
+data("InsectSprays")
+g <- ggplot(InsectSprays,aes(x=spray,y=count))
+g <- g + geom_violin()
+g
+InsectSprays$spray <- relevel(InsectSprays$spray,'B')
+# log(mean) = sprayB + sprayA*C1 +...
+# exp(sprayB + sprayA*C1 + ...) = mean = exp(sprayB)*exp(sprayA^C1)*...
+mdl <- glm(count~spray,poisson,InsectSprays)
+coef <- summary(mdl)$coef
+coef
+sprayB <- exp(coef[1,1])
+sprayB
+sprayA <- sprayB * exp(coef[2,1])
+sprayA
+sprayA/sprayB
+
+# 5: Not "The coefficient estimate is divided by 10". Is "coefficients remain",
+# I don't understand
+
+# log(y) = beta0 + beta1*x + log(t)
+# exp(beta0 + beta1*x + log(t)) = y
+# exp(beta0) * exp(beta1)^x * t = y
+
+# log(y) = beta0 + beta1*x + log(log(10)+t)
+# exp(beta0 + beta1*x + log(log(10)+t)) = y
+# exp(beta0) * exp(beta1)^x * (log(10)+t)
+# exp(beta0) * exp(beta1)^x * log(10) + exp(beta0) * exp(beta1)^x * t
+
+# 6: 1.013
+# see: https://medium.com/analytics-vidhya/spline-regression-in-r-960ca82aa62c
+
+x <- -5:5
+y <- c(5.12, 3.93, 2.67, 1.87, 0.52, 0.08, 0.93, 2.05, 2.54, 3.87, 4.97)
+model <- lm(y~x)
+y_hat <- predict(model)
+df <- data.frame(x,y,y_hat)
+knot <- 0
+
+ggplot(df, aes(x=x)) + 
+  geom_line(aes(y = y), color = "darkred") + 
+  geom_line(aes(y = y_hat), color="steelblue")
+
+summary(model)
+
+df$Z_bar <- ifelse(df$x>knot,1,0)
+df$diff <- df$x - knot
+df$Z <- df$diff * df$Z_bar
+df
+
+spline <- lm(y ~ x + Z,df)
+df$y_hat_spline <- predict(spline)
+
+ggplot(df, aes(x=x)) + 
+  geom_line(aes(y = y), color = "darkred") + 
+  geom_line(aes(y = y_hat), color="steelblue") +
+  geom_line(aes(y = y_hat_spline), color = 'green')
+
+summary(spline)
+
+coef <- summary(spline)$coef
+# The estimated slope after the knot
+coef[3,1] + coef[2,1]
